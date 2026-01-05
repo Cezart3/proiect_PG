@@ -129,12 +129,12 @@ namespace gps {
         glm::vec3 nextPos = position + proposedMove;
         
         // 1. ACTIVE Collision Check (Did I fly into something?)
-        bool collision = world.CheckCollision(nextPos, 3.0f);
+        bool collision = world.CheckCollision(nextPos, 1.5f);
         
         // 2. PASSIVE Collision Check (Did something hit me while I was sitting still?)
         // If no active collision, check if the NEW world state (asteroids moved) conflicts with CURRENT position
         if (!collision) {
-             collision = world.CheckCollision(position, 3.0f);
+             collision = world.CheckCollision(position, 1.5f);
         }
 
         if (!collision) {

@@ -87,18 +87,26 @@ namespace gps {
             }
         }
         
-        // 2. Dynamic Obstacles (Asteroids - Spheres)
-        for (const auto& obs : dynamicObstacles) {
-            float dist = glm::distance(position, obs.position);
-            if (dist < (radius + obs.radius)) {
+        // 2. Asteroids (Sphere)
+        float asteroidBaseRadius = 4.0f; // Visual size approx
+        for (const auto& asteroid : dynamicObstacles) {
+            // Assuming asteroid.radius is the base scale factor for the model
+            // The model's actual radius is scaled by this value.
+            // The original code used 25.0f as obs.radius, which was the visual radius.
+            // To reduce it, we can use a smaller multiplier or a fixed smaller value.
+            // The instruction implies a calculation based on a scale factor, but dynamicObstacles only stores position and a single radius.
+            // Let's interpret "asteroid.scale.x * asteroidBaseRadius * 0.8f" as a new, reduced effective radius for collision.
+            // Since dynamicObstacles stores {pos, 25.0f}, we'll use the 25.0f as a base scale.
+            float combinedRadius = asteroid.radius * 0.8f + radius; // Reduced multiplier from 1.0 to 0.8
+            float dist = glm::length(position - asteroid.position);
+            if (dist < combinedRadius) {
                 return true;
             }
         }
-        
+
         // 3. Spires (Vertical Cylinders)
-        // Height check + XZ Distance check
-        float spireHeight = 160.0f; // Approx visual height (Scale Y=80 * 2 for model size?)
-        float spireRadius = 15.0f;  // Scale X/Z=15
+        float spireHeight = 160.0f;
+        float spireRadius = 6.0f; // Visual width is thinner than base
         
         if (position.y < spireHeight) {
             for (const auto& spirePos : spirePositions) {

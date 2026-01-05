@@ -19,6 +19,7 @@
 #include "Model3D.hpp"
 #include "Drone.hpp" // Modular Drone
 #include "World.hpp" // Modular World
+#include "ParticleSystem.hpp" // Rain
 
 #include <iostream>
 
@@ -54,6 +55,8 @@ GLboolean pressedKeys[1024];
 // Game Objects
 gps::Drone myPlayerDrone;
 gps::World myWorld;
+gps::ParticleSystem rainSystem;
+bool rainActive = false;
 
 // Additional fleet drone (keeping it here for now as simple prop, or move to World later?)
 // Let's keep one simple prop usage here to show how to mix them, or move to World?
@@ -126,9 +129,39 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
 }
 
 void processMovement(float delta) {
+    // Toggle Presentation (I key) - Allowed anytime
+    static bool iPressed = false;
+    if (pressedKeys[GLFW_KEY_I] && !iPressed) {
+        if (myCamera.isPresentationActive()) {
+            myCamera.stopPresentation();
+        } else {
+            myCamera.startPresentation();
+        }
+        iPressed = true;
+    }
+    if (!pressedKeys[GLFW_KEY_I]) iPressed = false;
+
+    // Update Presentation Camera (must happen even if presentation is active)
+    myCamera.updatePresentation(delta);
+
+    // If Presentation is ON, disable other controls
+    if (myCamera.isPresentationActive()) return;
+
     // Delegate to Drone Class
     myPlayerDrone.Update(delta, pressedKeys, myWorld);
     
+    // Toggle Rain (P key)
+    static bool pPressed = false;
+    if (pressedKeys[GLFW_KEY_P] && !pPressed) {
+        rainActive = !rainActive;
+        pPressed = true;
+    }
+    if (!pressedKeys[GLFW_KEY_P]) pPressed = false;
+    
+    if (rainActive) {
+        rainSystem.Update(delta, myPlayerDrone.GetPosition());
+    }
+        
     // Toggle Flashlight (F key)
     static bool fPressed = false;
     if (pressedKeys[GLFW_KEY_F] && !fPressed) {
@@ -138,24 +171,72 @@ void processMovement(float delta) {
         glUniform1i(glGetUniformLocation(myBasicShader.shaderProgram, "spotLight.active"), flashlightOn ? 1 : 0);
         fPressed = true;
     }
-    if (!pressedKeys[GLFW_KEY_F]) {
-        fPressed = false;
+    if (!pressedKeys[GLFW_KEY_F]) fPressed = false;
+    
+    // Toggle Fog (C key)
+    static bool cPressed = false;
+    static bool fogEnabled = true; // Default ON
+    if (pressedKeys[GLFW_KEY_C] && !cPressed) {
+        fogEnabled = !fogEnabled;
+        myBasicShader.useShaderProgram();
+        glUniform1i(glGetUniformLocation(myBasicShader.shaderProgram, "fogActive"), fogEnabled ? 1 : 0);
+        cPressed = true;
+        std::cout << "Fog Toggled: " << (fogEnabled ? "ON" : "OFF") << std::endl;
+    }
+    if (!pressedKeys[GLFW_KEY_C]) cPressed = false;
+    
+    // Render Modes
+    // 1: Wireframe
+    if (pressedKeys[GLFW_KEY_1]) {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        myBasicShader.useShaderProgram();
+        glUniform1i(glGetUniformLocation(myBasicShader.shaderProgram, "isFlat"), 0);
+    }
+    // 2: Smooth (Solid)
+    if (pressedKeys[GLFW_KEY_2]) {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        myBasicShader.useShaderProgram();
+        glUniform1i(glGetUniformLocation(myBasicShader.shaderProgram, "isFlat"), 0);
+    }
+    // 3: Polygonal (Solid + Flat Shading)
+    if (pressedKeys[GLFW_KEY_3]) {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        myBasicShader.useShaderProgram();
+        glUniform1i(glGetUniformLocation(myBasicShader.shaderProgram, "isFlat"), 1);
+    }
+    // 4: Point
+    if (pressedKeys[GLFW_KEY_4]) {
+        glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
     }
 }
 
 void updateCamera() {
-    float distance = 20.0f;
-    float height = 6.0f;
+    // Override if in Presentation Mode
+    if (myCamera.isPresentationActive()) {
+        // Presentation Logic handles updates internally via myCamera.updatePresentation
+        // But we MUST update the view matrix global!
+        view = myCamera.getViewMatrix();
+        return; 
+    }
 
-    // Camera Strategy: Follow the drone stabilized
+    // Standard 3rd Person Follow Logic
     glm::vec3 dronePos = myPlayerDrone.GetPosition();
-    glm::vec3 forward = myPlayerDrone.GetForward(); 
-    glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f); 
-
-    glm::vec3 cameraPos = dronePos - forward * distance + glm::vec3(0.0f, height, 0.0f);
-    glm::vec3 lookAtTarget = dronePos + forward * 10.0f;
-
-    view = glm::lookAt(cameraPos, lookAtTarget, up);
+    glm::vec3 forward = myPlayerDrone.GetForward();
+    glm::vec3 up = myPlayerDrone.GetUp(); 
+    
+    // Desired Position
+    glm::vec3 cameraOffset = -forward * 30.0f + up * 15.0f; 
+    glm::vec3 targetPos = dronePos + cameraOffset;
+    
+    // Very simple smoothing (Lerp)
+    glm::vec3 currentPos = myCamera.getPosition();
+    glm::vec3 newPos = glm::mix(currentPos, targetPos, 0.1f);
+    
+    myCamera.setPosition(newPos);
+    myCamera.setTarget(dronePos + forward * 10.0f); // Look slightly ahead of drone
+    
+    // Update the view matrix directly
+    view = myCamera.getViewMatrix();
     
     // UPDATE SPOTLIGHT (Headlight)
     // Needs to be in Eye Space!
@@ -198,6 +279,9 @@ void initModels() {
 
     // Initialize World (Rocks, Skybox, Ground)
     myWorld.Init();
+    
+    // Init Rain (2000 drops, range 300x50x300 around player)
+    rainSystem.Init(3000, glm::vec3(0, 50, 0), glm::vec3(400.0f, 100.0f, 400.0f));
 }
 
 void initShaders() {
@@ -275,6 +359,8 @@ void initUniforms() {
     glUniform1f(glGetUniformLocation(myBasicShader.shaderProgram, "spotLight.outerCutOff"), glm::cos(glm::radians(17.5f)));
     glUniform3fv(glGetUniformLocation(myBasicShader.shaderProgram, "spotLight.color"), 1, glm::value_ptr(glm::vec3(1.0f, 0.9f, 0.8f))); // Warm headlight
     glUniform1i(glGetUniformLocation(myBasicShader.shaderProgram, "spotLight.active"), 1); // On by default
+    glUniform1i(glGetUniformLocation(myBasicShader.shaderProgram, "fogActive"), 1); // Fog On by default
+    glUniform1i(glGetUniformLocation(myBasicShader.shaderProgram, "isFlat"), 0); // Smooth by default
 }
 
 // Helper to draw the scene geometry (used by both passes)
@@ -424,6 +510,10 @@ void renderScene() {
     renderFleetMember(myBasicShader, glm::vec3(30.0f, 10.0f, 30.0f), 45.0f, glm::vec3(0.0f, 1.0f, 1.0f), view);
     renderFleetMember(myBasicShader, glm::vec3(-50.0f, 20.0f, -40.0f), -30.0f, glm::vec3(1.0f, 0.0f, 0.0f), view);
     myWorld.Draw(myBasicShader, view, projection, gps::World::RENDER_ALL);
+    
+    if (rainActive) {
+        rainSystem.Draw(view, projection);
+    }
 }
 
 void cleanup() {

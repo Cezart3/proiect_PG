@@ -3,6 +3,7 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
+#include <vector>
 
 namespace gps {
     
@@ -25,12 +26,29 @@ namespace gps {
         //pitch - camera rotation around the x axis
         void rotate(float pitch, float yaw);
         
+        // Direct Control
+        void setPosition(glm::vec3 pos);
+        void setTarget(glm::vec3 target);
+        glm::vec3 getTarget();
+        
+        // Presentation Mode
+        void startPresentation();
+        void stopPresentation();
+        void updatePresentation(float delta);
+        bool isPresentationActive();
+
     private:
         glm::vec3 cameraPosition;
         glm::vec3 cameraTarget;
         glm::vec3 cameraFrontDirection;
         glm::vec3 cameraRightDirection;
         glm::vec3 cameraUpDirection;
+        
+        // Presentation State
+        bool presentationActive = false;
+        float presentationTime = 0.0f;
+        std::vector<glm::vec3> waypoints;
+        int currentSegment = 0;
     };    
 }
 

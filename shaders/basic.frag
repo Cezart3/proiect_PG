@@ -34,6 +34,8 @@ uniform vec3 lightColor;
 uniform PointLight pointLights[6];
 uniform int nrPointLights;
 uniform SpotLight spotLight;
+uniform int fogActive;
+uniform int isFlat;
 
 // Textures
 uniform sampler2D diffuseTexture;
@@ -121,12 +123,30 @@ void calcSpotLight(SpotLight light, vec3 normal, vec3 viewDir, vec3 fragPos) {
     }
 }
 
+float computeFog() {
+    float fogDensity = 0.002f; // Tuned for 1000 rendering distance
+    float fragmentDistance = length(fPosEye.xyz);
+    float fogFactor = exp(-pow(fragmentDistance * fogDensity, 2));
+    return clamp(fogFactor, 0.0f, 1.0f);
+}
+
 void main() 
 {
     ambientTotal = vec3(0.0);
     diffuseTotal = vec3(0.0);
     specularTotal = vec3(0.0);
-    vec3 normal = normalize(fNormalEye);
+    
+    vec3 normal;
+    if (isFlat == 1) {
+        // Flat Shading (Polygonal) - limit derivatives to face
+        vec3 dx = dFdx(fPosEye.xyz);
+        vec3 dy = dFdy(fPosEye.xyz);
+        normal = normalize(cross(dx, dy));
+    } else {
+        // Smooth Shading
+        normal = normalize(fNormalEye);
+    }
+
     vec3 viewDir = normalize(-fPosEye.xyz);
     
     // 1. Directional
@@ -146,13 +166,25 @@ void main()
     vec3 diffuseFinal = diffuseTotal * Kd;
     vec3 specularFinal = specularTotal * Ks;
 
-    if (hasTexture == 1) {
+    if (hasTexture == 1 && isFlat == 0) {
         vec3 texColor = texture(diffuseTexture, fTexCoords).rgb;
         ambientFinal *= texColor;
         diffuseFinal *= texColor;
         specularFinal *= texture(specularTexture, fTexCoords).rgb;
+    } else if (isFlat == 1) {
+        // Pure Material Color for Low Poly Look
     }
 
     vec3 color = min(ambientFinal + diffuseFinal + specularFinal, 1.0f);
-    fColor = vec4(color, 1.0f);
+    
+    // --- FOG CALCULATION ---
+    if (fogActive == 1) {
+        float fogFactor = computeFog();
+        vec4 fogColor = vec4(0.0f, 0.0f, 0.0f, 1.0f); // Deep Space Black Fog
+        
+        vec4 finalColor = mix(fogColor, vec4(color, 1.0f), fogFactor);
+        fColor = finalColor;
+    } else {
+        fColor = vec4(color, 1.0f);
+    }
 }
