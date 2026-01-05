@@ -41,9 +41,14 @@ namespace gps {
     }
 
     void ParticleSystem::Update(float delta, glm::vec3 centerPos) {
+        // Simple Wind Vector
+        glm::vec3 wind = glm::vec3(5.0f, 0.0f, 2.0f); 
+        
         // Update positions
         for(int i=0; i<particleCount; ++i) {
             particles[i].position.y -= particles[i].speed * delta;
+            particles[i].position.x += wind.x * delta; // Wind X
+            particles[i].position.z += wind.z * delta; // Wind Z
             
             // Check bounds relative to centerPos
             // If too far below or too far from center XZ, respawn at top
@@ -69,8 +74,10 @@ namespace gps {
             // Draw as LINE (Streak)
             // Top point
             positions.push_back(p.position);
-            // Bottom point (Streak length depends on speed)
-            positions.push_back(p.position - glm::vec3(0.0f, 0.5f, 0.0f)); 
+            // Bottom point (Streak length depends on speed + wind slant)
+            // Slant the rain based on wind
+            glm::vec3 tailoffset = glm::vec3(-wind.x * 0.1f, 0.5f, -wind.z * 0.1f);
+            positions.push_back(p.position - tailoffset); 
         }
 
         glBindBuffer(GL_ARRAY_BUFFER, VBO);

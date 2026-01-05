@@ -339,15 +339,7 @@ void initUniforms() {
 
 	lightDir = glm::vec3(0.0f, 10.0f, 10.0f); // High Sun
 	lightDirLoc = glGetUniformLocation(myBasicShader.shaderProgram, "lightDir");
-    // Send LightDir in Eye Space? 
-    // Shader expects Eye Space currently? 
-    // "vec3 lightDirN = vec3(normalize(view * vec4(lightDir, 0.0f)));" inside calcDirLight? 
-    // Wait, my new shader expects 'lightDir' to be Eye Space passed in?
-    // Frag: "vec3 lightDirN = normalize(lightDir);" -> IMPLIES lightDir IS ALREADY EYE SPACE.
-    // OLD shader did: "normalize(view * vec4(lightDir...))".
-    // I NEED TO UPDATE main.cpp to send Eye Space Dir Light every frame (since View changes).
-    
-    // REMOVED static send here. Will send in RenderScene or UpdateCamera.
+
     // Initialize default colors
 	glUniform3fv(glGetUniformLocation(myBasicShader.shaderProgram, "lightColor"), 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 1.0f)));
 
@@ -489,11 +481,14 @@ void renderScene() {
     glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projection));
     
     // Send Light/Shadow Uniforms
-    glm::vec3 sunDir = glm::normalize(glm::vec3(0.5f, 1.0f, 0.5f)); // Match Shadow Pass direction
+    // Send Light/Shadow Uniforms
+    // Dynamic Sun Direction (Rotate around Y axis based on lightAngle)
+    glm::mat4 lightRot = glm::rotate(glm::mat4(1.0f), glm::radians(lightAngle), glm::vec3(0, 1, 0));
+    glm::vec3 sunDir = glm::vec3(lightRot * glm::vec4(0.0f, 10.0f, 10.0f, 0.0f)); // Start high noon-ish
+    // Normalize
+    sunDir = glm::normalize(sunDir);
+
     // Transform to Eye Space
-    // Note: If 'lightDir' in shader is direction TO light, we use lightDir.
-    // If it's direction FROM light, we use -lightDir.
-    // Standard Blinn-Phong: LightDir is vector TO light.
     glm::vec3 sunDirEye = glm::vec3(view * glm::vec4(sunDir, 0.0f));
     glUniform3fv(lightDirLoc, 1, glm::value_ptr(sunDirEye));
     
