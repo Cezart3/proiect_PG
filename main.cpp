@@ -63,9 +63,16 @@ gps::World myWorld;
 gps::Model3D fleetDrone; 
 
 // shaders
+// shaders
 gps::Shader myBasicShader; 
-// World manages its own SkyboxShader, but shares BasicShader? Or manages internally?
-// In World.cpp I used passed BasicShader.
+gps::Shader depthMapShader;
+
+// Shadow Map
+GLuint shadowMapFBO;
+GLuint depthMapTexture;
+const unsigned int SHADOW_WIDTH = 4096;
+const unsigned int SHADOW_HEIGHT = 4096;
+
 
 
 GLenum glCheckError_(const char *file, int line)
@@ -195,7 +202,42 @@ void initModels() {
 
 void initShaders() {
 	myBasicShader.loadShader("shaders/basic.vert", "shaders/basic.frag");
-    // World manages SkyboxShader locally
+    depthMapShader.loadShader("shaders/depthMap.vert", "shaders/depthMap.frag");
+    
+    // Check for shader errors
+    if (depthMapShader.shaderProgram == 0) {
+        std::cerr << "Depth Map Shader failed to load!" << std::endl;
+    }
+}
+
+void initFBO() {
+    // Generate and bind the framebuffer
+    glGenFramebuffers(1, &shadowMapFBO);
+    
+    // Create depth texture
+    glGenTextures(1, &depthMapTexture);
+    glBindTexture(GL_TEXTURE_2D, depthMapTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER); 
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+    
+    // Attach depth texture as FBO's depth buffer
+    glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMapTexture, 0);
+    
+    // Determine that FBO does not need any color data
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
+    
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void initUniforms() {
@@ -235,58 +277,153 @@ void initUniforms() {
     glUniform1i(glGetUniformLocation(myBasicShader.shaderProgram, "spotLight.active"), 1); // On by default
 }
 
-// Temporary Helper for Fleet Drones (since they aren't in World class yet)
-void renderFleetMember(glm::vec3 position, float rotationAngle, glm::vec3 colorOverride) {
-    myBasicShader.useShaderProgram();
+// Helper to draw the scene geometry (used by both passes)
+void drawObjects(gps::Shader& shader, glm::mat4 viewMatrix, glm::mat4 projectionMatrix) {
+    shader.useShaderProgram();
+    
+    // Set View/Proj (if shader needs them - depth shader technically only needs lightSpaceMatrix passed as 'projection' or similar, 
+    // but we usually pass lightSpaceMatrix as a separate uniform. 
+    // However, for BasicShader, we need view/proj.
+    
+    // Note: depthMap.vert uses 'lightSpaceMatrix' and 'model'. 
+    // basic.vert uses 'view', 'projection', 'model'.
+    
+    // Uniforms MUST be set by the caller (renderScene) because they differ per pass.
+    // This function only issues the Draw calls and sets Model matrix.
+    
+    // But wait, Drone.Draw and World.Draw set their own Model matrices internally.
+    // So we just need to call them. 
+    // They accept a shader.
+    
+    // Player
+    myPlayerDrone.Draw(shader, viewMatrix); // Drone.Draw sets 'model' and 'normalMatrix'
+    
+    // Static Fleet (Manually set model here)
+    // We need to refactor generic drawing or just duplicate calls?
+    // Let's copy the calls.
+    
+    // Fleet Code from prev RenderScene replacement:
+    // ... logic for fleet ...
+    // renderFleetMember helper sets its own uniforms. 
+    // We need to update renderFleetMember to take a shader!
+}
+
+// Updated Helper
+void renderFleetMember(gps::Shader& shader, glm::vec3 position, float rotationAngle, glm::vec3 colorOverride, glm::mat4 viewMatrix) {
+    shader.useShaderProgram();
     
     glm::mat4 modelMatrix = glm::mat4(1.0f);
     modelMatrix = glm::translate(modelMatrix, position);
     modelMatrix = glm::rotate(modelMatrix, glm::radians(rotationAngle), glm::vec3(0, 1, 0));
     
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(modelMatrix));
-    glm::mat3 normMat = glm::mat3(glm::inverseTranspose(view * modelMatrix));
-    glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(normMat));
+    glUniformMatrix4fv(glGetUniformLocation(shader.shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(modelMatrix));
+    
+    // Only set normalMatrix if not depth shader (optimization, or check uniform loc)
+    // Depth shader doesn't have normalMatrix.
+    GLint normLoc = glGetUniformLocation(shader.shaderProgram, "normalMatrix");
+    if(normLoc >= 0) {
+        glm::mat3 normMat = glm::mat3(glm::inverseTranspose(viewMatrix * modelMatrix));
+        glUniformMatrix3fv(normLoc, 1, GL_FALSE, glm::value_ptr(normMat));
+    }
 
     for(size_t i=0; i<fleetDrone.meshes.size(); ++i) {
-        glm::vec3 originalKd = fleetDrone.meshes[i].Kd;
-        float brightness = (originalKd.r + originalKd.g + originalKd.b) / 3.0f;
-        
-        if (brightness > 0.8f && colorOverride != glm::vec3(1.0f)) { 
-             fleetDrone.meshes[i].Kd = colorOverride;
-        }
-        
-        fleetDrone.meshes[i].Draw(myBasicShader);
-        fleetDrone.meshes[i].Kd = originalKd; 
+        if(colorOverride != glm::vec3(1.0f)) fleetDrone.meshes[i].Kd = colorOverride;
+        fleetDrone.meshes[i].Draw(shader);
     }
 }
 
 void renderScene() {
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // 1. SHADOW PASS
+    // Unbind shadow texture to prevent Feedback Loop error (Texture cannot be bound as sampler and FBO attachment simultaneously)
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, 0);
 
+    depthMapShader.useShaderProgram();
+    
+    // Disable Face Culling for Shadows (Double-sided shadows are safer/better)
+    glDisable(GL_CULL_FACE);
+    
+    depthMapShader.useShaderProgram();
+    
+    // 1. Center the shadow map on the player
+    // This ensures shadows follow the drone wherever it goes
+    glm::vec3 dronePos = myPlayerDrone.GetPosition();
+    
+    // Light direction (fixed sun)
+    glm::vec3 lightDir = glm::normalize(glm::vec3(0.5f, 1.0f, 0.5f)); // Normalized sun direction
+    
+    // Position the "Light Camera" appropriately to cover the area around the drone
+    // We move the light source along the lightDir relative to the drone
+    float orthoSize = 300.0f; // View radius
+    glm::vec3 lightPos = dronePos + lightDir * orthoSize; // INCREASED DISTANCE (was / 2.0f)
+    
+    glm::mat4 lightProjection = glm::ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, 1.0f, 2000.0f); // INCREASED FAR PLANE
+    glm::mat4 lightView = glm::lookAt(lightPos, dronePos, glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::mat4 lightSpaceMatrix = lightProjection * lightView;
+    
+    // Update Global Light Direction for Lighting Pass too (keep consistent)
+    // Note: In lighting pass we send Eye Space, so we'll recalculate there.
+    // But conceptually, the sun is now "Infinite" direction.
+    
+    glUniformMatrix4fv(glGetUniformLocation(depthMapShader.shaderProgram, "lightSpaceMatrix"), 1, GL_FALSE, glm::value_ptr(lightSpaceMatrix));
+    
+    glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+    glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
+    glClear(GL_DEPTH_BUFFER_BIT);
+    
+    // Draw Objects for Shadow Map
+    // Drone
+    // We need Drone::Draw to work with Depth Shader? 
+    // Drone.Draw sets 'model', 'view'?, 'normalMatrix'.
+    // Depth shader only has 'model' and 'lightSpaceMatrix'.
+    // If we pass 'lightView' as 'viewMatrix' to Drone::Draw, it sets 'view' uniform. 
+    // Depth shader doesn't have 'view' uniform, so it's ignored (GL_INVALID_OPERATION? No, just -1).
+    // But Drone.Draw DOES NOT set 'lightSpaceMatrix'. 
+    // WE NEED A GENERIC 'Draw(shader)' in Drone/World that sets MODEL matrix.
+    
+    // For now, let's just accept that Drone.Draw sets extra uniforms that might fail if loc is -1?
+    // In OpenGL, setting uniform to -1 location is silently ignored. SAFE.
+    // So we can reuse Drone::Draw(depthMapShader, lightView).
+    
+    myPlayerDrone.Draw(depthMapShader, lightView); 
+    renderFleetMember(depthMapShader, glm::vec3(30.0f, 10.0f, 30.0f), 45.0f, glm::vec3(1.0f), lightView);
+    renderFleetMember(depthMapShader, glm::vec3(-50.0f, 20.0f, -40.0f), -30.0f, glm::vec3(1.0f), lightView);
+    myWorld.Draw(depthMapShader, lightView, lightProjection, gps::World::RENDER_SHADOWS);
+    
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    
+    // 2. LIGHTING PASS
+    glViewport(0, 0, myWindow.getWindowDimensions().width, myWindow.getWindowDimensions().height);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    
     myBasicShader.useShaderProgram();
+    
+    // Send View/Proj
     glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+    glUniformMatrix4fv(projectionLoc, 1, GL_FALSE, glm::value_ptr(projection));
     
-    // UPDATE SUN LIGHT (Eye Space)
-    glm::vec3 sunDir = glm::vec3(100.0f, 100.0f, 100.0f); // Fixed Sun Position
-    // Or Direction? LightDir usually points FROM light source? or TO?
-    // Standard: SurfacePoint - LightPos = -LightDir.
-    // Usually lightDir uniform is Direction TO Light or FROM Light?
-    // Diffuse = max(dot(N, L), 0.0). L is vector TO light.
-    // If we pass "lightDir", usually it's vector TO light.
-    // Let's assume sunDir is vector TO sun.
-    
+    // Send Light/Shadow Uniforms
+    glm::vec3 sunDir = glm::normalize(glm::vec3(0.5f, 1.0f, 0.5f)); // Match Shadow Pass direction
+    // Transform to Eye Space
+    // Note: If 'lightDir' in shader is direction TO light, we use lightDir.
+    // If it's direction FROM light, we use -lightDir.
+    // Standard Blinn-Phong: LightDir is vector TO light.
     glm::vec3 sunDirEye = glm::vec3(view * glm::vec4(sunDir, 0.0f));
     glUniform3fv(lightDirLoc, 1, glm::value_ptr(sunDirEye));
     
-	// Player
-    myPlayerDrone.Draw(myBasicShader, view);
-
-    // Fleet (Static Props)
-    renderFleetMember(glm::vec3(30.0f, 10.0f, 30.0f), 45.0f, glm::vec3(0.0f, 1.0f, 1.0f));
-    renderFleetMember(glm::vec3(-50.0f, 20.0f, -40.0f), -30.0f, glm::vec3(1.0f, 0.0f, 0.0f));
-
-    // World (Ground, Skybox, Environment)
-    myWorld.Draw(myBasicShader, view, projection);
+    // Send LightSpaceMatrix to BasicShader for shadow calc
+    glUniformMatrix4fv(glGetUniformLocation(myBasicShader.shaderProgram, "lightSpaceMatrix"), 1, GL_FALSE, glm::value_ptr(lightSpaceMatrix));
+    
+    // Bind Shadow Map
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, depthMapTexture);
+    glUniform1i(glGetUniformLocation(myBasicShader.shaderProgram, "shadowMap"), 3);
+    
+    // Draw Objects
+    myPlayerDrone.Draw(myBasicShader, view); 
+    renderFleetMember(myBasicShader, glm::vec3(30.0f, 10.0f, 30.0f), 45.0f, glm::vec3(0.0f, 1.0f, 1.0f), view);
+    renderFleetMember(myBasicShader, glm::vec3(-50.0f, 20.0f, -40.0f), -30.0f, glm::vec3(1.0f, 0.0f, 0.0f), view);
+    myWorld.Draw(myBasicShader, view, projection, gps::World::RENDER_ALL);
 }
 
 void cleanup() {
@@ -306,6 +443,7 @@ int main(int argc, const char * argv[]) {
 	initModels();
 	initShaders();
 	initUniforms();
+    initFBO();
     setWindowCallbacks();
 
 	glCheckError();
@@ -319,6 +457,7 @@ int main(int argc, const char * argv[]) {
         lastTimeStamp = currentTimeStamp;
 
         processMovement(delta);
+        myWorld.Update(delta); // Update dynamic environment
         updateCamera();
 
 	    renderScene();

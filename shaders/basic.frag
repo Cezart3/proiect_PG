@@ -38,6 +38,7 @@ uniform SpotLight spotLight;
 // Textures
 uniform sampler2D diffuseTexture;
 uniform sampler2D specularTexture;
+uniform sampler2D shadowMap;
 uniform int hasTexture;
 
 // Material
@@ -54,14 +55,40 @@ float ambientStrength = 0.2f;
 float specularStrength = 0.5f;
 float shininess = 32.0f;
 
-void calcDirLight(vec3 normal, vec3 viewDir) {
+in vec4 fPosLightSpace;
+
+float calcShadow(vec4 fragPosLightSpace) {
+    // perform perspective divide
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    // transform to [0,1] range
+    projCoords = projCoords * 0.5 + 0.5;
+    
+    // keep the shadow at 0.0 when outside the far_plane region of the light's frustum.
+    if(projCoords.z > 1.0)
+        return 0.0;
+        
+    // get closest depth value from light's perspective (using [0,1] range fragPosLight as coords)
+    float closestDepth = texture(shadowMap, projCoords.xy).r; 
+    // get depth of current fragment from light's perspective
+    float currentDepth = projCoords.z;
+    
+    // check whether current frag pos is in shadow
+    float bias = 0.005;
+    float shadow = currentDepth - bias > closestDepth ? 1.0 : 0.0;
+
+    return shadow;
+}
+
+void calcDirLight(vec3 normal, vec3 viewDir, float shadow) {
     vec3 lightDirN = normalize(lightDir);
     float diff = max(dot(normal, lightDirN), 0.0);
     vec3 reflectDir = reflect(-lightDirN, normal);
     float spec = pow(max(dot(viewDir, reflectDir), 0.0), shininess);
+    
     ambientTotal += lightColor * ambientStrength;
-    diffuseTotal += lightColor * diff;
-    specularTotal += lightColor * spec * specularStrength;
+    // Shadow affects Diffuse and Specular, but NOT Ambient
+    diffuseTotal += lightColor * diff * (1.0 - shadow);
+    specularTotal += lightColor * spec * specularStrength * (1.0 - shadow);
 }
 
 void calcPointLight(PointLight light, vec3 normal, vec3 viewDir, vec3 fragPos) {
@@ -103,7 +130,8 @@ void main()
     vec3 viewDir = normalize(-fPosEye.xyz);
     
     // 1. Directional
-    calcDirLight(normal, viewDir);
+    float shadow = calcShadow(fPosLightSpace);
+    calcDirLight(normal, viewDir, shadow);
     
     // 2. Point Lights (SAFE LOOP)
     for(int i = 0; i < 6; i++) {

@@ -22,10 +22,15 @@ namespace gps {
         glm::vec3 GetPosition() const;
         glm::vec3 GetForward() const;
         glm::vec3 GetUp() const; // For camera stability
+        void Reset(); // Added reset logic
 
     private:
         gps::Model3D mesh;
         glm::vec3 position;
+        
+        // Crash Logic
+        bool isCrashed = false;
+        float verticalVelocity = 0.0f; // For falling
         
         float yaw;
         float pitch;
