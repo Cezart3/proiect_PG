@@ -57,6 +57,7 @@ gps::Drone myPlayerDrone;
 gps::World myWorld;
 gps::ParticleSystem rainSystem;
 bool rainActive = false;
+float lightAngle = 0.0f;
 
 // Additional fleet drone (keeping it here for now as simple prop, or move to World later?)
 // Let's keep one simple prop usage here to show how to mix them, or move to World?
@@ -140,6 +141,14 @@ void processMovement(float delta) {
         iPressed = true;
     }
     if (!pressedKeys[GLFW_KEY_I]) iPressed = false;
+
+    // Light Control
+    if (pressedKeys[GLFW_KEY_J]) {
+        lightAngle -= 1.0f;
+    }
+    if (pressedKeys[GLFW_KEY_L]) {
+        lightAngle += 1.0f;
+    }
 
     // Update Presentation Camera (must happen even if presentation is active)
     myCamera.updatePresentation(delta);
