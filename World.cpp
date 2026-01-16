@@ -51,6 +51,128 @@ namespace gps {
             // Removed from 'obstacles' to avoid double checking as Sphere
             // Handled as Cylinder in CheckCollision directly via spirePositions
         }
+
+        // 3. PROCEDURAL CITY (Realism Phase: Denser & Varied)
+        building.LoadModel("models/kenney_space-kit/Models/OBJ format/hangar_largeA.obj");
+        alien.LoadModel("models/kenney_space-kit/Models/OBJ format/alien.obj");
+        sun.LoadModel("models/kenney_space-kit/Models/OBJ format/rock_largeA.obj"); // Reuse rock as sun base
+        
+        // New Models
+        tower1.LoadModel("models/tower1/base.obj");
+        tower2.LoadModel("models/tower2/base.obj");
+        newAlien.LoadModel("models/new_alien/base.obj");
+        
+        int numBuildings = 200; // Increased density from 150
+        for(int i=0; i<numBuildings; ++i) {
+            // Random Position
+            float x = (rand() % 2400) - 1200.0f;
+            float z = (rand() % 2400) - 1200.0f;
+            
+            // Avoid Center (Spawn area)
+            if (std::abs(x) < 200.0f && std::abs(z) < 200.0f) continue;
+            
+            // Avoid Overlap (Simple check)
+            bool collision = false;
+            for(const auto& b : cityBuildings) {
+                if (glm::distance(b.position, glm::vec3(x, 0.1f, z)) < 150.0f) { // Increased spacing for larger buildings
+                    collision = true;
+                    break;
+                }
+            }
+            if(collision) continue;
+            
+            BuildingInstance inst;
+            inst.position = glm::vec3(x, 0.1f, z);
+            inst.rotation = (float)(rand() % 360);
+            
+            // Random Type Selection
+            int rType = rand() % 100;
+            if (rType < 40) inst.type = 0; // Hangar (40%)
+            else if (rType < 70) inst.type = 1; // Tower1 (30%)
+            else inst.type = 2; // Tower2 (30%)
+
+            // Random Color
+            int colorType = rand() % 4;
+            if (colorType == 0) inst.color = glm::vec3(0.8f, 0.8f, 0.9f); // Std
+            else if (colorType == 1) inst.color = glm::vec3(0.5f, 0.6f, 0.8f); // Blueish
+            else if (colorType == 2) inst.color = glm::vec3(0.7f, 0.7f, 0.7f); // Darker
+            else inst.color = glm::vec3(0.9f, 0.8f, 0.7f); // Sand/Rust
+            
+            // Apply Properties based on Type
+            if (inst.type == 0) {
+                 // Hangar
+                 inst.scale = glm::vec3(15.0f, 15.0f, 15.0f);
+                 
+                 // Spawn Aliens! (Formation of 3)
+                 glm::mat4 m = glm::mat4(1.0f);
+                 m = glm::rotate(m, glm::radians(inst.rotation), glm::vec3(0,1,0));
+                 glm::vec3 fwd = glm::vec3(m * glm::vec4(0, 0, 1, 0));
+                 
+                 int alienType = rand() % 2; // Random alien type for this group
+                 
+                 for(int a=0; a<3; ++a) {
+                     glm::vec3 alienPos = inst.position + (fwd * 80.0f) + (glm::vec3(m * glm::vec4(1,0,0,0)) * (float)(a-1) * 25.0f);
+                     alienPos.y = 0.0f;
+                     alienInstances.push_back({alienPos, alienType});
+                 }
+
+            } else if (inst.type == 1) {
+                 // Tower 1 (Medium) -> Larger
+                 inst.scale = glm::vec3(20.0f, 20.0f, 20.0f);
+            } else {
+                 // Tower 2 (Large) -> Massive
+                 inst.scale = glm::vec3(40.0f, 40.0f, 40.0f);
+            }
+            // Removed manual obstacles.push_back checks are handled in CheckCollision custom logic now
+            
+            cityBuildings.push_back(inst);
+        }
+
+        // 4. SCATTERED NEW ALIENS
+        // Randomly scatter 50 new aliens globally
+        for(int i=0; i<50; ++i) {
+             float x = (rand() % 2400) - 1200.0f;
+             float z = (rand() % 2400) - 1200.0f;
+             
+             // Avoid Center
+             if (std::abs(x) < 200.0f && std::abs(z) < 200.0f) continue;
+
+             alienInstances.push_back({glm::vec3(x, 10.0f, z), 1}); // Type 1 = New Alien
+        }
+
+        // 5. ALIEN CITY (Mini City)
+        // Center: -800, -800. Radius: 300
+        int alienCityDensity = 80;
+        float cityCx = -800.0f;
+        float cityCz = -800.0f;
+        
+        for(int i=0; i<alienCityDensity; ++i) {
+             float angle = (float)(rand() % 360);
+             float dist = (float)(rand() % 300);
+             float x = cityCx + dist * cos(glm::radians(angle));
+             float z = cityCz + dist * sin(glm::radians(angle));
+             
+             BuildingInstance inst;
+             inst.position = glm::vec3(x, 0.1f, z);
+             inst.rotation = (float)(rand() % 360);
+             inst.color = glm::vec3(1.0f); // Default for textures
+             
+             // Only New Towers
+             if (rand() % 2 == 0) {
+                 inst.type = 1; // Tower 1
+                 inst.scale = glm::vec3(20.0f, 20.0f, 20.0f);
+             } else {
+                 inst.type = 2; // Tower 2
+                 inst.scale = glm::vec3(40.0f, 40.0f, 40.0f);
+             }
+             
+             cityBuildings.push_back(inst);
+             
+             // Add Defenders (New Aliens)
+             if (i % 3 == 0) {
+                 alienInstances.push_back({glm::vec3(x, 20.0f, z), 1});
+             }
+        }
     }
 
     void World::Update(float delta) {
@@ -68,7 +190,8 @@ namespace gps {
             float radius = 250.0f;
             float x = radius * cos(angle); // Fix logic: x = r*cos, z = r*sin for circle
             float z = radius * sin(angle);
-            float y = 150.0f + ((i % 2 == 0) ? 30.0f : -30.0f); 
+            // Raised Height: was 150 +/- 30. Now 300 +/- 50
+            float y = 300.0f + ((i % 2 == 0) ? 50.0f : -50.0f); 
             
             glm::vec3 pos = glm::vec3(x, y, z);
             asteroidPositions.push_back(pos);
@@ -121,6 +244,29 @@ namespace gps {
             }
         }
         
+        // 4. City Buildings (Cylinders/Boxes)
+        float playerHeight = 2.0f; // Approx height of camera/player
+        for (const auto& building : cityBuildings) {
+            // Calculate effective bounds
+            float buildingRadius = building.scale.x * 2.5f; // Matches visual approximate width
+            float buildingHeight = building.scale.y * 2.0f; // Matches visual approximate height
+            
+            // Height Check: If we are ABOVE the building, no collision
+            // building.position.y is 0.1f. 
+            if (position.y > (building.position.y + buildingHeight + 1.0f)) {
+                 continue;
+            }
+            
+            // Radius Check (XZ Plane)
+            float dx = position.x - building.position.x;
+            float dz = position.z - building.position.z;
+            float distXZ = sqrt(dx*dx + dz*dz);
+            
+            if (distXZ < (buildingRadius + radius)) {
+                return true;
+            }
+        }
+        
         return false;
     }
 
@@ -161,6 +307,39 @@ namespace gps {
              // Create a "Tower" shape by scaling Y axis significantly
              // Scale X/Z: 15.0f, Scale Y: 80.0f
              RenderMesh(rock, shader, viewMatrix, projectionMatrix, pos, 0.0f, glm::vec3(15.0f, 80.0f, 15.0f), glm::vec3(0.4f, 0.4f, 0.5f));
+        }
+
+        // 3. CITY (Unified)
+        for(const auto& inst : cityBuildings) {
+            if (inst.type == 0) {
+                RenderMesh(building, shader, viewMatrix, projectionMatrix, inst.position, inst.rotation, inst.scale, inst.color);
+            } else if (inst.type == 1) {
+                RenderMesh(tower1, shader, viewMatrix, projectionMatrix, inst.position, inst.rotation, inst.scale, inst.color);
+            } else if (inst.type == 2) {
+                RenderMesh(tower2, shader, viewMatrix, projectionMatrix, inst.position, inst.rotation, inst.scale, inst.color);
+            }
+        }
+        
+        // 4. ALIENS
+        for(const auto& alienInst : alienInstances) {
+             if (alienInst.type == 0) {
+                 RenderMesh(alien, shader, viewMatrix, projectionMatrix, alienInst.position, 0.0f, 8.0f, glm::vec3(0.2f, 0.8f, 0.2f));
+             } else {
+                 // New Alien (Larger)
+                 RenderMesh(newAlien, shader, viewMatrix, projectionMatrix, alienInst.position, 0.0f, 12.0f, glm::vec3(1.0f)); 
+             }
+        }
+        
+        // 5. SUN (Visible Source)
+        // Position matches LightDir loc or fixed sun position
+        // Only render in normal pass to avoid shadow weirdness (or keep it, it blocks light?)
+        if (type == RENDER_ALL) {
+             // Sun Position: Matches main.cpp lightDir (0, 10, 10) -> Far away direction
+             // Let's put a physical object there to look at.
+             // We need it to be "Infinite" but for visual we place it far.
+             // Direction is approx (0, 1, 1).
+             glm::vec3 sunPos = glm::vec3(0.0f, 500.0f, 500.0f); 
+             RenderMesh(sun, shader, viewMatrix, projectionMatrix, sunPos, 0.0f, 30.0f, glm::vec3(1.0f, 1.0f, 0.5f)); // Yellow-ish
         }
 
         // 3. ASTEROIDS (Floating & Orbiting)

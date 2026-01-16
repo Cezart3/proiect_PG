@@ -20,7 +20,7 @@ namespace gps {
         
         // Model matrix for ground
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::scale(model, glm::vec3(500.0f, 1.0f, 500.0f)); 
+        model = glm::scale(model, glm::vec3(2000.0f, 1.0f, 2000.0f)); 
         glUniformMatrix4fv(glGetUniformLocation(shader.shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
         
         // Normal matrix (Eye Space)

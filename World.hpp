@@ -81,8 +81,31 @@ namespace gps {
         // Procedural Storage
         std::vector<glm::vec3> asteroidPositions; // Cached positions for rendering
         std::vector<glm::vec3> spirePositions;
+    struct BuildingInstance {
+        glm::vec3 position;
+        glm::vec3 scale;
+        float rotation;
+        glm::vec3 color; // Tint
+        int type; // 0=Hangar, 1=Tower1, 2=Tower2
     };
 
-}
+    struct AlienInstance {
+        glm::vec3 position;
+        int type; // 0=Old, 1=New
+    };
+        
+    // Unified City Storage
+    std::vector<BuildingInstance> cityBuildings;
+    std::vector<AlienInstance> alienInstances; // Replaced vector<vec3>
+
+    gps::Model3D building;
+    gps::Model3D alien;
+    gps::Model3D sun;
+    gps::Model3D tower1;
+    gps::Model3D tower2;
+    gps::Model3D newAlien;
+    }; // Close class World
+
+} // Close namespace gps
 
 #endif /* World_hpp */
