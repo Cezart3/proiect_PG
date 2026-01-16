@@ -53,7 +53,11 @@ namespace gps {
         void Draw(gps::Shader& shader, glm::mat4 viewMatrix, glm::mat4 projectionMatrix, RenderType type = RENDER_ALL);  
         
         // true if collision detected
+        // true if collision detected
         bool CheckCollision(glm::vec3 position, float radius);
+
+        // Shooting
+        void FireBullet(glm::vec3 position, glm::vec3 direction);
 
     private:
         // Helper to render static objects with transforms
@@ -87,16 +91,25 @@ namespace gps {
         float rotation;
         glm::vec3 color; // Tint
         int type; // 0=Hangar, 1=Tower1, 2=Tower2
+        int health; // Health Points
     };
 
     struct AlienInstance {
         glm::vec3 position;
         int type; // 0=Old, 1=New
+        int health; // Health Points
+    };
+
+    struct Bullet {
+        glm::vec3 position;
+        glm::vec3 velocity;
+        float life;
     };
         
     // Unified City Storage
     std::vector<BuildingInstance> cityBuildings;
-    std::vector<AlienInstance> alienInstances; // Replaced vector<vec3>
+    std::vector<AlienInstance> alienInstances; 
+    std::vector<Bullet> bullets;
 
     gps::Model3D building;
     gps::Model3D alien;

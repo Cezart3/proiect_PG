@@ -129,6 +129,19 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
    // Optional mouse look
 }
 
+void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        // Fire!
+        glm::vec3 pos = myPlayerDrone.GetPosition();
+        glm::vec3 fwd = myPlayerDrone.GetForward();
+        
+        // Offset origin slightly so we don't shoot ourselves or start inside camera
+        glm::vec3 spawnPos = pos + fwd * 5.0f; 
+        
+        myWorld.FireBullet(spawnPos, fwd);
+    }
+}
+
 void processMovement(float delta) {
     // Toggle Presentation (I key) - Allowed anytime
     static bool iPressed = false;
@@ -269,6 +282,7 @@ void setWindowCallbacks() {
 	glfwSetWindowSizeCallback(myWindow.getWindow(), windowResizeCallback);
     glfwSetKeyCallback(myWindow.getWindow(), keyboardCallback);
     glfwSetCursorPosCallback(myWindow.getWindow(), mouseCallback);
+    glfwSetMouseButtonCallback(myWindow.getWindow(), mouseButtonCallback);
 }
 
 void initOpenGLState() {

@@ -102,6 +102,7 @@ namespace gps {
             if (inst.type == 0) {
                  // Hangar
                  inst.scale = glm::vec3(15.0f, 15.0f, 15.0f);
+                 inst.health = 20;
                  
                  // Spawn Aliens! (Formation of 3)
                  glm::mat4 m = glm::mat4(1.0f);
@@ -113,15 +114,17 @@ namespace gps {
                  for(int a=0; a<3; ++a) {
                      glm::vec3 alienPos = inst.position + (fwd * 80.0f) + (glm::vec3(m * glm::vec4(1,0,0,0)) * (float)(a-1) * 25.0f);
                      alienPos.y = 0.0f;
-                     alienInstances.push_back({alienPos, alienType});
+                     alienInstances.push_back({alienPos, alienType, 4}); // HP=4
                  }
 
             } else if (inst.type == 1) {
                  // Tower 1 (Medium) -> Larger
                  inst.scale = glm::vec3(20.0f, 20.0f, 20.0f);
+                 inst.health = 20;
             } else {
                  // Tower 2 (Large) -> Massive
                  inst.scale = glm::vec3(40.0f, 40.0f, 40.0f);
+                 inst.health = 50;
             }
             // Removed manual obstacles.push_back checks are handled in CheckCollision custom logic now
             
@@ -137,7 +140,7 @@ namespace gps {
              // Avoid Center
              if (std::abs(x) < 200.0f && std::abs(z) < 200.0f) continue;
 
-             alienInstances.push_back({glm::vec3(x, 10.0f, z), 1}); // Type 1 = New Alien
+             alienInstances.push_back({glm::vec3(x, 10.0f, z), 1, 4}); // Type 1 = New Alien, HP=4
         }
 
         // 5. ALIEN CITY (Mini City)
@@ -156,27 +159,30 @@ namespace gps {
              inst.position = glm::vec3(x, 0.1f, z);
              inst.rotation = (float)(rand() % 360);
              inst.color = glm::vec3(1.0f); // Default for textures
-             
-             // Only New Towers
-             if (rand() % 2 == 0) {
+            
+            if (rand() % 2 == 0) {
                  inst.type = 1; // Tower 1
                  inst.scale = glm::vec3(20.0f, 20.0f, 20.0f);
-             } else {
+                 inst.health = 20;
+            } else {
                  inst.type = 2; // Tower 2
                  inst.scale = glm::vec3(40.0f, 40.0f, 40.0f);
-             }
-             
-             cityBuildings.push_back(inst);
-             
-             // Add Defenders (New Aliens)
-             if (i % 3 == 0) {
-                 alienInstances.push_back({glm::vec3(x, 20.0f, z), 1});
-             }
+                 inst.health = 50; // Big tower needs more hits
+            }
+            
+            cityBuildings.push_back(inst);
+            
+            // Add Defenders (New Aliens)
+            if (i % 3 == 0) {
+                alienInstances.push_back({glm::vec3(x, 20.0f, z), 1, 4}); // Health=4
+            }
         }
     }
 
     void World::Update(float delta) {
-        // Update Asteroid Positions & Collision
+        // Update Asteroid Positions & Collision (Collision logic only - movement is stateless visual unless stored)
+        // Actually, we do store positions in asteroidPositions.
+        
         asteroidPositions.clear();
         dynamicObstacles.clear();
         
@@ -185,20 +191,91 @@ namespace gps {
         for(int i=0; i<15; ++i) {
             float angleBase = (float)i * (360.0f / 15.0f);
             float orbitSpeed = 0.1f + (i * 0.01f);
-            float angle = glm::radians(angleBase) + (time * orbitSpeed); // Continuous orbit
+            float angle = glm::radians(angleBase) + (time * orbitSpeed); 
             
             float radius = 250.0f;
-            float x = radius * cos(angle); // Fix logic: x = r*cos, z = r*sin for circle
+            float x = radius * cos(angle);
             float z = radius * sin(angle);
-            // Raised Height: was 150 +/- 30. Now 300 +/- 50
             float y = 300.0f + ((i % 2 == 0) ? 50.0f : -50.0f); 
             
             glm::vec3 pos = glm::vec3(x, y, z);
             asteroidPositions.push_back(pos);
-            
-            // Add to Dynamic Obstacles for collision
-            dynamicObstacles.push_back({pos, 25.0f}); // Radius matched visually
+            dynamicObstacles.push_back({pos, 25.0f});
         }
+
+        // --- BULLET LOGIC ---
+        // 1. Move Bullets
+        for (int i = 0; i < bullets.size(); ) {
+            bullets[i].position += bullets[i].velocity * delta;
+            bullets[i].life -= delta;
+            
+            if (bullets[i].life < 0) {
+                bullets.erase(bullets.begin() + i);
+                continue;
+            }
+            
+            // 2. Check Collision against Enemies
+            bool hit = false;
+            
+            // A. Buildings (Towers/Hangars) - Cylinder Check
+            for (int b = 0; b < cityBuildings.size(); ++b) {
+                float buildingRadius = cityBuildings[b].scale.x * 2.5f; 
+                float buildingHeight = cityBuildings[b].scale.y * 2.0f;
+                
+                // Height Check
+                if (bullets[i].position.y < 0.0f || bullets[i].position.y > (cityBuildings[b].position.y + buildingHeight)) {
+                     continue; // Out of height bounds
+                }
+                
+                // XZ Distance Check
+                float distXZ = glm::distance(glm::vec2(bullets[i].position.x, bullets[i].position.z), 
+                                             glm::vec2(cityBuildings[b].position.x, cityBuildings[b].position.z));
+                                             
+                if (distXZ < buildingRadius) {
+                    // HIT!
+                    cityBuildings[b].health--;
+                    hit = true;
+                    // std::cout << "Building Hit! HP: " << cityBuildings[b].health << std::endl;
+                    if (cityBuildings[b].health <= 0) {
+                        cityBuildings.erase(cityBuildings.begin() + b);
+                    }
+                    break;
+                }
+            }
+            
+            if (!hit) {
+                // B. Aliens - Sphere Check
+                for (int a = 0; a < alienInstances.size(); ++a) {
+                    float alienRadius = 8.0f;
+                    if (alienInstances[a].type == 1) alienRadius = 15.0f; // New aliens are bigger
+                    
+                    float dist = glm::distance(bullets[i].position, alienInstances[a].position);
+                    if (dist < alienRadius) {
+                        // HIT!
+                        alienInstances[a].health--;
+                        hit = true;
+                        if (alienInstances[a].health <= 0) {
+                            alienInstances.erase(alienInstances.begin() + a);
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            if (hit) {
+                bullets.erase(bullets.begin() + i);
+            } else {
+                i++;
+            }
+        }
+    }
+
+    void World::FireBullet(glm::vec3 position, glm::vec3 direction) {
+        Bullet b;
+        b.position = position;
+        b.velocity = glm::normalize(direction) * 400.0f; // Fast
+        b.life = 3.0f; // 3 seconds
+        bullets.push_back(b);
     }
 
     bool World::CheckCollision(glm::vec3 position, float radius) {
@@ -331,6 +408,12 @@ namespace gps {
         }
         
         // 5. SUN (Visible Source)
+        // ... sun rendering moved ...
+        // Let's render bullets here
+        for(const auto& b : bullets) {
+             // Render as small bright spheres (using sun model scaled down)
+             RenderMesh(sun, shader, viewMatrix, projectionMatrix, b.position, 0.0f, 2.0f, glm::vec3(1.0f, 1.0f, 0.0f)); 
+        }
         // Position matches LightDir loc or fixed sun position
         // Only render in normal pass to avoid shadow weirdness (or keep it, it blocks light?)
         if (type == RENDER_ALL) {
