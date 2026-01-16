@@ -58,15 +58,23 @@ namespace gps {
 
         // Shooting
         void FireBullet(glm::vec3 position, glm::vec3 direction);
-
-    private:
-        // Helper to render static objects with transforms
+        
+        // Helper to render static objects with transforms (Now Public)
         void RenderMesh(gps::Model3D &mesh, gps::Shader& shader, glm::mat4 view, glm::mat4 projection, 
                        glm::vec3 position, float rotationAngle, float scale, glm::vec3 colorOverride = glm::vec3(1.0f));
                        
         // Overload for Non-Uniform Scaling (e.g. Tall Spires)
         void RenderMesh(gps::Model3D &mesh, gps::Shader& shader, glm::mat4 view, glm::mat4 projection, 
                        glm::vec3 position, float rotationAngle, glm::vec3 scaleVector, glm::vec3 colorOverride = glm::vec3(1.0f));
+
+        // Overload for Arbitrary Orientation (Bullets)
+        void RenderMesh(gps::Model3D &mesh, gps::Shader& shader, glm::mat4 view, glm::mat4 projection, 
+                       glm::vec3 position, glm::vec3 direction, glm::vec3 scaleVector, glm::vec3 colorOverride);
+        
+        // Effects
+        // void RenderNitro(glm::vec3 position, glm::vec3 direction); // Removed, using direct RenderMesh
+
+    private:
 
         gps::SkyBox skyBox;
         gps::Shader skyboxShader;
@@ -113,10 +121,14 @@ namespace gps {
 
     gps::Model3D building;
     gps::Model3D alien;
-    gps::Model3D sun;
     gps::Model3D tower1;
     gps::Model3D tower2;
     gps::Model3D newAlien;
+    
+    public:
+    gps::Model3D sun; // Expose for external effects (like Nitro)
+    gps::Model3D nitroModel; // Smoother model for flames
+    private:
     }; // Close class World
 
 } // Close namespace gps

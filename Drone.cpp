@@ -11,7 +11,9 @@ namespace gps {
         yaw = 0.0f;
         pitch = 0.0f;
         roll = 0.0f;
+        roll = 0.0f;
         visualTilt = 0.0f;
+        isBoosting = false;
 
         // Tuning
         speed = 60.0f;
@@ -54,8 +56,16 @@ namespace gps {
         
         // --- NORMAL FLIGHT ---
 
-        float moveS = speed * delta;
-        float liftS = liftSpeed * delta;
+        // NITRO BOOST (F key)
+        isBoosting = false;
+        if (pressedKeys[GLFW_KEY_F]) {
+             isBoosting = true;
+        }
+
+        float speedMultiplier = isBoosting ? 2.0f : 1.0f;
+        
+        float moveS = speed * speedMultiplier * delta;
+        float liftS = liftSpeed * speedMultiplier * delta;
         float rotS = rotSpeed * delta;
         float rollS = 100.0f * delta; 
         
@@ -129,12 +139,12 @@ namespace gps {
         glm::vec3 nextPos = position + proposedMove;
         
         // 1. ACTIVE Collision Check (Did I fly into something?)
-        bool collision = world.CheckCollision(nextPos, 1.5f);
+        bool collision = world.CheckCollision(nextPos, 0.5f);
         
         // 2. PASSIVE Collision Check (Did something hit me while I was sitting still?)
         // If no active collision, check if the NEW world state (asteroids moved) conflicts with CURRENT position
         if (!collision) {
-             collision = world.CheckCollision(position, 1.5f);
+             collision = world.CheckCollision(position, 0.5f);
         }
 
         if (!collision) {
@@ -167,6 +177,15 @@ namespace gps {
         
         // Visual Tilt
         model = glm::rotate(model, glm::radians(visualTilt), glm::vec3(1, 0, 0));
+
+        // SCALE Correction for HUGE model
+        model = glm::scale(model, glm::vec3(0.005f)); // Reduced further (was 0.01f)
+        
+        // ORIENTATION Correction (Refined Step 3)
+        // 1. Fix Belly Up: -90 X (Pitch) - this puts Nose Forward, Belly Up.
+        // 2. Removed 180 Y as it was flipping us backwards.
+        model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(1, 0, 0));
+        // Also might need 180 Y if it's backwards, but let's test this first.
 
         // Uniforms
         GLint modelLoc = glGetUniformLocation(shader.shaderProgram, "model");

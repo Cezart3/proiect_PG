@@ -23,6 +23,7 @@ namespace gps {
         glm::vec3 GetForward() const;
         glm::vec3 GetUp() const; // For camera stability
         void Reset(); // Added reset logic
+        bool GetBoosting() const { return isBoosting; }
 
     private:
         gps::Model3D mesh;
@@ -30,6 +31,7 @@ namespace gps {
         
         // Crash Logic
         bool isCrashed = false;
+        bool isBoosting = false;
         float verticalVelocity = 0.0f; // For falling
         
         float yaw;

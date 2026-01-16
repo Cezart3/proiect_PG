@@ -56,6 +56,7 @@ namespace gps {
         building.LoadModel("models/kenney_space-kit/Models/OBJ format/hangar_largeA.obj");
         alien.LoadModel("models/kenney_space-kit/Models/OBJ format/alien.obj");
         sun.LoadModel("models/kenney_space-kit/Models/OBJ format/rock_largeA.obj"); // Reuse rock as sun base
+        nitroModel.LoadModel("models/kenney_space-kit/Models/OBJ format/rocket_fuelA.obj"); // Smooth cylinder for effects
         
         // New Models
         tower1.LoadModel("models/tower1/base.obj");
@@ -143,40 +144,54 @@ namespace gps {
              alienInstances.push_back({glm::vec3(x, 10.0f, z), 1, 4}); // Type 1 = New Alien, HP=4
         }
 
-        // 5. ALIEN CITY (Mini City)
-        // Center: -800, -800. Radius: 300
-        int alienCityDensity = 80;
-        float cityCx = -800.0f;
-        float cityCz = -800.0f;
-        
-        for(int i=0; i<alienCityDensity; ++i) {
-             float angle = (float)(rand() % 360);
-             float dist = (float)(rand() % 300);
-             float x = cityCx + dist * cos(glm::radians(angle));
-             float z = cityCz + dist * sin(glm::radians(angle));
-             
-             BuildingInstance inst;
-             inst.position = glm::vec3(x, 0.1f, z);
-             inst.rotation = (float)(rand() % 360);
-             inst.color = glm::vec3(1.0f); // Default for textures
+        // 5. CONTINUOUS ALIEN RING CITY
+        // A massive belt of buildings surrounding the central area.
+        int numBuildingsRing = 800; // Dense
+        float ringRadius = 1800.0f; 
+        float ringWidth = 500.0f; // Variation +/- 250
+
+        for (int i = 0; i < numBuildingsRing; ++i) {
+            // Distribute evenly along the circle
+            float angle = (float)i * (360.0f / numBuildingsRing);
             
-            if (rand() % 2 == 0) {
-                 inst.type = 1; // Tower 1
+            // Add some angular jitter so it's not a perfect line
+            angle += ((rand() % 100) / 100.0f * 5.0f); 
+
+            // Random distance from center of ring
+            float distOffset = ((rand() % 100) / 100.0f * ringWidth) - (ringWidth * 0.5f);
+            float r = ringRadius + distOffset;
+
+            float x = r * cos(glm::radians(angle));
+            float z = r * sin(glm::radians(angle));
+            
+            BuildingInstance inst;
+            inst.position = glm::vec3(x, 0.1f, z);
+            inst.rotation = (float)(rand() % 360);
+            inst.color = glm::vec3(1.0f); 
+            
+            if (rand() % 10 < 3) { // 30% Hangars (Connectors)
+                 inst.type = 0; 
+                 inst.scale = glm::vec3(15.0f, 15.0f, 15.0f);
+                 inst.health = 20;
+            } else if (rand() % 2 == 0) { // 35% Tower 1
+                 inst.type = 1;
                  inst.scale = glm::vec3(20.0f, 20.0f, 20.0f);
                  inst.health = 20;
-            } else {
-                 inst.type = 2; // Tower 2
+            } else { // 35% Tower 2
+                 inst.type = 2;
                  inst.scale = glm::vec3(40.0f, 40.0f, 40.0f);
-                 inst.health = 50; // Big tower needs more hits
+                 inst.health = 50; 
             }
             
             cityBuildings.push_back(inst);
             
-            // Add Defenders (New Aliens)
-            if (i % 3 == 0) {
-                alienInstances.push_back({glm::vec3(x, 20.0f, z), 1, 4}); // Health=4
+            // Add Defenders (Every 5th building)
+            if (i % 5 == 0) {
+                 alienInstances.push_back({glm::vec3(x, 20.0f, z), 1, 4}); 
             }
         }
+        
+        /* REMOVED DISCRETE CITIES LOGIC */
     }
 
     void World::Update(float delta) {
@@ -325,8 +340,9 @@ namespace gps {
         float playerHeight = 2.0f; // Approx height of camera/player
         for (const auto& building : cityBuildings) {
             // Calculate effective bounds
-            float buildingRadius = building.scale.x * 2.5f; // Matches visual approximate width
-            float buildingHeight = building.scale.y * 2.0f; // Matches visual approximate height
+            // REDUCED Hitbox sizes based on user feedback (was 2.5x / 2.0x)
+            float buildingRadius = building.scale.x * 0.8f; // Tighter fit
+            float buildingHeight = building.scale.y * 1.5f; // reduced height margin
             
             // Height Check: If we are ABOVE the building, no collision
             // building.position.y is 0.1f. 
@@ -411,8 +427,10 @@ namespace gps {
         // ... sun rendering moved ...
         // Let's render bullets here
         for(const auto& b : bullets) {
-             // Render as small bright spheres (using sun model scaled down)
-             RenderMesh(sun, shader, viewMatrix, projectionMatrix, b.position, 0.0f, 2.0f, glm::vec3(1.0f, 1.0f, 0.0f)); 
+             // Render as elongated cylinder/bolt
+             // Scale: 0.5 width, 0.5 height, 6.0 length (Z) for better visibility
+             // Color: Cyan/Neon Blue (0.0, 1.0, 1.0)
+             RenderMesh(sun, shader, viewMatrix, projectionMatrix, b.position, b.velocity, glm::vec3(0.5f, 0.5f, 6.0f), glm::vec3(0.0f, 1.0f, 1.0f)); 
         }
         // Position matches LightDir loc or fixed sun position
         // Only render in normal pass to avoid shadow weirdness (or keep it, it blocks light?)
@@ -487,5 +505,39 @@ namespace gps {
             mesh.meshes[i].Kd = originalKd; 
         }
     }
+
+    // Directional Render Mesh (Bullets)
+    void World::RenderMesh(gps::Model3D &mesh, gps::Shader& shader, glm::mat4 view, glm::mat4 projection, 
+                   glm::vec3 position, glm::vec3 direction, glm::vec3 scaleVector, glm::vec3 colorOverride) {
+        
+        // ... (Existing implementation) ...
+        shader.useShaderProgram();
+        
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::translate(model, position);
+        
+        glm::vec3 up = glm::vec3(0, 1, 0);
+        if (glm::abs(glm::dot(glm::normalize(direction), up)) > 0.95f) up = glm::vec3(1, 0, 0);
+        
+        glm::mat4 rotation = glm::inverse(glm::lookAt(glm::vec3(0.0f), direction, up));
+        
+        model = model * rotation;
+        model = glm::scale(model, scaleVector);
+        
+        glUniformMatrix4fv(glGetUniformLocation(shader.shaderProgram, "model"), 1, GL_FALSE, glm::value_ptr(model));
+
+        GLint normalMatrixLoc = glGetUniformLocation(shader.shaderProgram, "normalMatrix");
+        if(normalMatrixLoc >= 0) {
+            glm::mat3 normMat = glm::mat3(glm::inverseTranspose(view * model));
+            glUniformMatrix3fv(normalMatrixLoc, 1, GL_FALSE, glm::value_ptr(normMat));
+        }
+        
+        for(size_t i=0; i<mesh.meshes.size(); ++i) {
+             glm::vec3 originalKd = mesh.meshes[i].Kd;
+             if (colorOverride != glm::vec3(1.0f)) mesh.meshes[i].Kd = colorOverride;
+             mesh.meshes[i].Draw(shader);
+             mesh.meshes[i].Kd = originalKd;
+        }
+}
 
 }

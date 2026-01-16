@@ -131,14 +131,42 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
 
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-        // Fire!
-        glm::vec3 pos = myPlayerDrone.GetPosition();
-        glm::vec3 fwd = myPlayerDrone.GetForward();
+        // Get Mouse Screen Coordinates
+        double xpos, ypos;
+        glfwGetCursorPos(window, &xpos, &ypos);
         
-        // Offset origin slightly so we don't shoot ourselves or start inside camera
-        glm::vec3 spawnPos = pos + fwd * 5.0f; 
+        // Window Dimensions
+        int width, height;
+        glfwGetWindowSize(window, &width, &height);
         
-        myWorld.FireBullet(spawnPos, fwd);
+        // Raycast Logic
+        glm::vec4 viewport = glm::vec4(0, 0, width, height);
+        
+        // Unproject Near and Far plane points under cursor
+        // WinY is inverted for OpenGL (0 at bottom)
+        glm::vec3 winCoordsNear = glm::vec3(xpos, height - ypos, 0.0f);
+        glm::vec3 winCoordsFar = glm::vec3(xpos, height - ypos, 1.0f);
+        
+        glm::vec3 nearPoint = glm::unProject(winCoordsNear, view, projection, viewport);
+        glm::vec3 farPoint = glm::unProject(winCoordsFar, view, projection, viewport);
+        
+        glm::vec3 rayDir = glm::normalize(farPoint - nearPoint);
+        
+        // Fire Logic
+        myWorld.FireBullet(myPlayerDrone.GetPosition(), rayDir); // Simplified: Just fire along view ray? 
+        // Wait, firing along 'rayDir' means bullets come from the CAMERA. 
+        // We want bullets from the DRONE towards the RAY.
+        
+        // Calculate Target Point (Point under cursor at distance)
+        glm::vec3 targetPoint = nearPoint + rayDir * 1000.0f; 
+        
+        // Calculate Direction from Drone to Target
+        glm::vec3 fireDir = glm::normalize(targetPoint - myPlayerDrone.GetPosition());
+        
+        myWorld.FireBullet(myPlayerDrone.GetPosition(), fireDir);
+        
+        // BUT if ray intersects ground earlier, aim at ground.
+        // Just aim at 'targetPoint' = infinite ray.
     }
 }
 
@@ -184,16 +212,16 @@ void processMovement(float delta) {
         rainSystem.Update(delta, myPlayerDrone.GetPosition());
     }
         
-    // Toggle Flashlight (F key)
-    static bool fPressed = false;
-    if (pressedKeys[GLFW_KEY_F] && !fPressed) {
+    // Flashlight (L key)
+    static bool lPressed = false;
+    if (pressedKeys[GLFW_KEY_L] && !lPressed) {
         static bool flashlightOn = true;
         flashlightOn = !flashlightOn;
         myBasicShader.useShaderProgram();
         glUniform1i(glGetUniformLocation(myBasicShader.shaderProgram, "spotLight.active"), flashlightOn ? 1 : 0);
-        fPressed = true;
+        lPressed = true;
     }
-    if (!pressedKeys[GLFW_KEY_F]) fPressed = false;
+    if (!pressedKeys[GLFW_KEY_L]) lPressed = false;
     
     // Toggle Fog (C key)
     static bool cPressed = false;
@@ -297,7 +325,10 @@ void initOpenGLState() {
 }
 
 void initModels() {
-    myPlayerDrone.Load("models/kenney_space-kit/Models/OBJ format/craft_speederA.obj");
+    // New Sci-Fi Fighter Ship
+    myPlayerDrone.Load("models/nava_noua/13897_Sci-Fi_Fighter_Ship_v1_l1.obj");
+    
+    // Use the old model for the generic fleet for now
     fleetDrone.LoadModel("models/kenney_space-kit/Models/OBJ format/craft_speederA.obj");
 
     // Initialize World (Rocks, Skybox, Ground)
@@ -525,9 +556,70 @@ void renderScene() {
     
     // Draw Objects
     myPlayerDrone.Draw(myBasicShader, view); 
+    
+    // NITRO FLAMES
+    if (myPlayerDrone.GetBoosting()) {
+         glm::vec3 dronePos = myPlayerDrone.GetPosition();
+         glm::vec3 droneFwd = myPlayerDrone.GetForward();
+         glm::vec3 droneRight = glm::normalize(glm::cross(droneFwd, glm::vec3(0, 1, 0))); // Approx right
+         
+         // Dual Exhausts (Left and Right)
+         // Offset: Behind (-Fwd) and Side (+/- Right)
+         // Adjusted for "Ray" look.
+         float offsetBack = 6.0f;
+         float offsetSide = 0.5f;
+
+         glm::vec3 exhaustLeft = dronePos - droneFwd * offsetBack - droneRight * offsetSide;
+         glm::vec3 exhaustRight = dronePos - droneFwd * offsetBack + droneRight * offsetSide;
+         
+         // Render Flames as "Rays of Light"
+         // Use overlapping cylinders to create a core and glow effect.
+         
+         // 1. Inner Core: Very thin, very bright (White)
+         glm::vec3 coreScale = glm::vec3(0.05f, 0.05f, 8.0f);
+         glm::vec3 coreColor = glm::vec3(2.0f, 2.0f, 2.0f); // Bright White
+         
+         // 2. Outer Halo: Slightly wider, Blue/Cyan
+         glm::vec3 haloScale = glm::vec3(0.15f, 0.15f, 10.0f);
+         glm::vec3 haloColor = glm::vec3(0.1f, 0.5f, 1.0f); // Blue Ray
+         
+         // Left Ray
+         myWorld.RenderMesh(myWorld.nitroModel, myBasicShader, view, projection, exhaustLeft, -droneFwd, coreScale, coreColor);
+         myWorld.RenderMesh(myWorld.nitroModel, myBasicShader, view, projection, exhaustLeft, -droneFwd, haloScale, haloColor);
+
+         // Right Ray
+         myWorld.RenderMesh(myWorld.nitroModel, myBasicShader, view, projection, exhaustRight, -droneFwd, coreScale, coreColor);
+         myWorld.RenderMesh(myWorld.nitroModel, myBasicShader, view, projection, exhaustRight, -droneFwd, haloScale, haloColor);
+    }
+
     renderFleetMember(myBasicShader, glm::vec3(30.0f, 10.0f, 30.0f), 45.0f, glm::vec3(0.0f, 1.0f, 1.0f), view);
     renderFleetMember(myBasicShader, glm::vec3(-50.0f, 20.0f, -40.0f), -30.0f, glm::vec3(1.0f, 0.0f, 0.0f), view);
     myWorld.Draw(myBasicShader, view, projection, gps::World::RENDER_ALL);
+    
+    // Auto-Fire Logic (Hold Click)
+    static double lastFireTime = 0.0;
+    GLFWwindow* window = myWindow.getWindow();
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+        double currentTime = glfwGetTime();
+        if (currentTime - lastFireTime > 0.15) { // 6.6 shots/sec
+             // Raycast Logic Again (Duplicate code, ideally refactor to function)
+             // But for quick implementation:
+             int width, height;
+             glfwGetWindowSize(window, &width, &height);
+             double xpos, ypos;
+             glfwGetCursorPos(window, &xpos, &ypos);
+             glm::vec3 winCoords = glm::vec3(xpos, height - ypos, 0.0f);
+             // Depth read is slow, assume far plane or basic direction
+             glm::vec4 viewport = glm::vec4(0, 0, width, height);
+             // Unproject with Z=0 (Near) and Z=1 (Far) to get ray
+             glm::vec3 nearPt = glm::unProject(glm::vec3(winCoords.x, winCoords.y, 0.0f), view, projection, viewport);
+             glm::vec3 farPt = glm::unProject(glm::vec3(winCoords.x, winCoords.y, 1.0f), view, projection, viewport);
+             glm::vec3 direction = glm::normalize(farPt - nearPt);
+
+             myWorld.FireBullet(myPlayerDrone.GetPosition(), direction);
+             lastFireTime = currentTime;
+        }
+    }
     
     if (rainActive) {
         rainSystem.Draw(view, projection);
