@@ -1,27 +1,17 @@
 #include "SkyBox.hpp"
 #include "stb_image.h"
-
 namespace gps {
-
     SkyBox::SkyBox() {
-        // InitSkyBox(); // Moved to Load to ensure OpenGL context exists
     }
-
     void SkyBox::Load(std::vector<std::string> cubeMapFaces) {
         InitSkyBox();
         textureID = LoadSkyBoxTextures(cubeMapFaces);
     }
-
     void SkyBox::Draw(gps::Shader shader, glm::mat4 viewMatrix, glm::mat4 projectionMatrix) {
-        
         shader.useShaderProgram();
-
-        //remove translation from the view matrix
         viewMatrix = glm::mat4(glm::mat3(viewMatrix));
-
         glUniformMatrix4fv(glGetUniformLocation(shader.shaderProgram, "view"), 1, GL_FALSE, glm::value_ptr(viewMatrix));
         glUniformMatrix4fv(glGetUniformLocation(shader.shaderProgram, "projection"), 1, GL_FALSE, glm::value_ptr(projectionMatrix));
-
         glDepthFunc(GL_LEQUAL);
         glBindVertexArray(skyboxVAO);
         glActiveTexture(GL_TEXTURE0);
@@ -31,45 +21,38 @@ namespace gps {
         glBindVertexArray(0);
         glDepthFunc(GL_LESS);
     }
-
     void SkyBox::InitSkyBox() {
         float skyboxVertices[] = {
-            // positions          
             -1.0f,  1.0f, -1.0f,
             -1.0f, -1.0f, -1.0f,
              1.0f, -1.0f, -1.0f,
              1.0f, -1.0f, -1.0f,
              1.0f,  1.0f, -1.0f,
             -1.0f,  1.0f, -1.0f,
-
             -1.0f, -1.0f,  1.0f,
             -1.0f, -1.0f, -1.0f,
             -1.0f,  1.0f, -1.0f,
             -1.0f,  1.0f, -1.0f,
             -1.0f,  1.0f,  1.0f,
             -1.0f, -1.0f,  1.0f,
-
              1.0f, -1.0f, -1.0f,
              1.0f, -1.0f,  1.0f,
              1.0f,  1.0f,  1.0f,
              1.0f,  1.0f,  1.0f,
              1.0f,  1.0f, -1.0f,
              1.0f, -1.0f, -1.0f,
-
             -1.0f, -1.0f,  1.0f,
             -1.0f,  1.0f,  1.0f,
              1.0f,  1.0f,  1.0f,
              1.0f,  1.0f,  1.0f,
              1.0f, -1.0f,  1.0f,
             -1.0f, -1.0f,  1.0f,
-
             -1.0f,  1.0f, -1.0f,
              1.0f,  1.0f, -1.0f,
              1.0f,  1.0f,  1.0f,
              1.0f,  1.0f,  1.0f,
             -1.0f,  1.0f,  1.0f,
             -1.0f,  1.0f, -1.0f,
-
             -1.0f, -1.0f, -1.0f,
             -1.0f, -1.0f,  1.0f,
              1.0f, -1.0f, -1.0f,
@@ -77,7 +60,6 @@ namespace gps {
             -1.0f, -1.0f,  1.0f,
              1.0f, -1.0f,  1.0f
         };
-
         glGenVertexArrays(1, &skyboxVAO);
         glGenBuffers(1, &skyboxVBO);
         glBindVertexArray(skyboxVAO);
@@ -86,12 +68,10 @@ namespace gps {
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     }
-
     GLuint SkyBox::LoadSkyBoxTextures(std::vector<std::string> cubeMapFaces) {
         GLuint textureID;
         glGenTextures(1, &textureID);
         glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
-
         int width, height, nrChannels;
         for (unsigned int i = 0; i < cubeMapFaces.size(); i++)
         {
@@ -114,7 +94,6 @@ namespace gps {
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-
         return textureID;
     }
 }

@@ -1,6 +1,5 @@
 #ifndef Mesh_hpp
 #define Mesh_hpp
-
 #if defined (__APPLE__)
     #define GL_SILENCE_DEPRECATION
     #include <OpenGL/gl3.h>
@@ -8,71 +7,46 @@
     #define GLEW_STATIC
     #include <GL/glew.h>
 #endif
-
 #include <glm/glm.hpp>
-
 #include "Shader.hpp"
-
 #include <string>
 #include <vector>
-
-
 namespace gps {
-
     struct Vertex {
-
         glm::vec3 Position;
         glm::vec3 Normal;
         glm::vec2 TexCoords;
     };
-
     struct Texture {
-
         GLuint id;
-        //ambientTexture, diffuseTexture, specularTexture
         std::string type;
         std::string path;
     };
-
     struct Material {
-
         glm::vec3 ambient;
         glm::vec3 diffuse;
         glm::vec3 specular;
     };
-
     struct Buffers {
         GLuint VAO;
         GLuint VBO;
         GLuint EBO;
     };
-
     class Mesh {
-
     public:
         std::vector<Vertex> vertices;
         std::vector<GLuint> indices;
         std::vector<Texture> textures;
-
         glm::vec3 Ka;
         glm::vec3 Kd;
         glm::vec3 Ks;
-
 	    Mesh(std::vector<Vertex> vertices, std::vector<GLuint> indices, std::vector<Texture> textures,
              glm::vec3 Ka = glm::vec3(1.0f), glm::vec3 Kd = glm::vec3(1.0f), glm::vec3 Ks = glm::vec3(1.0f));
-
 	    Buffers getBuffers();
-
 	    void Draw(gps::Shader shader);
-
     private:
-        /*  Render data  */
         Buffers buffers;
-
-	    // Initializes all the buffer objects/arrays
 	    void setupMesh();
-
     };
-
 }
-#endif /* Mesh_hpp */
+#endif  
